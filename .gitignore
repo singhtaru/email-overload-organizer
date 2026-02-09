@@ -1,0 +1,11 @@
+# virtual environment
+.venv/
+
+# data folders (large files)
+data/
+data/**
+
+# common data formats
+*.csv
+*.json
+*.parquet
