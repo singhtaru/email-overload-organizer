@@ -1,13 +1,14 @@
 import joblib
 import re
 from pathlib import Path
+from sentence_transformers import SentenceTransformer
 
 class EmailClassifier:
     def __init__(self):
         base_dir = Path(__file__).resolve().parent.parent
         models_dir = base_dir / "models"
-        self.tfidf = joblib.load(models_dir / "tfidf_vectorizer.pkl")
-        self.model = joblib.load(models_dir / "stacking_model.pkl")
+        self.sbert = SentenceTransformer('all-MiniLM-L6-v2')
+        self.model = joblib.load(models_dir / "embedding_stacking_model.pkl")
         self.negated_urgency_patterns = [
             re.compile(r"\bno\s+urgent\b", re.IGNORECASE),
             re.compile(r"\bnot\s+urgent\b", re.IGNORECASE),
@@ -63,7 +64,7 @@ class EmailClassifier:
         override = self._rule_override(normalized_text)
         if override is not None:
             return override
-        vec = self.tfidf.transform([normalized_text])
+        vec = self.sbert.encode([normalized_text], show_progress_bar=False)
         
         if hasattr(self.model, "predict_proba"):
             proba = self.model.predict_proba(vec)[0][1]

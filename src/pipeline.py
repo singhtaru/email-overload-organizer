@@ -13,7 +13,7 @@ class EmailAnalyzer:
         if pred == 1:
             return {
                 "importance": "Important",
-                "entities": self.ner.extract(text)
+                "entities": self.ner.extract_with_display_names(text)
             }
 
         return {

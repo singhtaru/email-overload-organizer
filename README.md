@@ -3,8 +3,8 @@
 An NLP project that classifies emails as important or not important and extracts named entities from important emails.
 
 The current implementation uses:
-- A TF-IDF + stacking classifier for importance prediction
-- A spaCy NER pipeline (`en_core_web_sm`) for entity extraction
+- A Semantic Sentence-Transformer (`all-MiniLM-L6-v2`) + stacking classifier for importance prediction
+- A spaCy NER pipeline (`en_core_web_md`) for entity extraction
 - A combined inference pipeline in `src/pipeline.py`
 
 ## Project Goals
@@ -17,6 +17,8 @@ The current implementation uses:
 
 ```text
 email-overload-organizer/
+  app/
+    app.py
   data/
     raw/
       cleaned_enron_emails.json
@@ -24,14 +26,15 @@ email-overload-organizer/
     processed/
       emails_with_labels.csv
   models/
-    tfidf_vectorizer.pkl
-    stacking_model.pkl
+    embedding_stacking_model.pkl
   notebooks/
     01_load_and_explore.ipynb
     02_preprocessing.ipynb
     03_classification.ipynb
     04_stacking classifier.ipynb
     05_ner.ipynb
+  scripts/
+    train_embedding_model.py
   src/
     classification.py
     ner.py
@@ -58,17 +61,16 @@ Important columns used in modeling:
 ## Model Details
 
 Classifier:
-- Vectorizer: `TfidfVectorizer(max_features=5000, ngram_range=(1,2), stop_words="english", min_df=5)`
+- Vectorizer: `SentenceTransformer('all-MiniLM-L6-v2')`
 - Base learners in stack:
   - Logistic Regression
-  - Multinomial Naive Bayes
+  - Random Forest Classifier
   - Linear SVM (`LinearSVC`)
 - Meta learner: Logistic Regression
 - Train/validation split: `test_size=0.2`, `random_state=42`, `stratify=y`
 
 Saved artifacts:
-- `models/tfidf_vectorizer.pkl`
-- `models/stacking_model.pkl`
+- `models/embedding_stacking_model.pkl`
 
 Notebook result currently recorded in `04_stacking classifier.ipynb`:
 - Accuracy: `0.9891833318820809`
@@ -77,19 +79,25 @@ Notebook result currently recorded in `04_stacking classifier.ipynb`:
 ## NER Details
 
 NER component in `src/ner.py`:
-- Model: `en_core_web_sm`
-- Active task: entity extraction from important emails
-- Extracted labels: `PERSON`, `ORG`, `DATE`, `TIME`, `MONEY`, `GPE`
-- Duplicate entities are removed in output
+- Model: `en_core_web_md` (with parser and tagger disabled for speed, but `attribute_ruler` kept for alignment).
+- Active task: entity extraction from important emails.
+- Deep Cleaning: Strips quoted replies, forwarded headers, and common email signatures prior to extraction to prevent phantom entities.
+- Validation Rules: Automatically filters out extreme string lengths, numeric-only bugs, and single-word lowercase noise.
+- Extracted labels: mapped to user-friendly tags like `People`, `Organizations`, `Dates`, `Times`, `Amounts`, `Locations`, `Events`, and `Facilities`.
 
-## End-to-End Pipeline
+## Application & End-to-End Pipeline
 
-`EmailAnalyzer` in `src/pipeline.py`:
-1. Classify input email text with `EmailClassifier`
-2. If prediction is important (`1`), run NER extraction
+**Frontend Web App (`app/app.py`):**
+- Built entirely in Streamlit for an interactive user interface.
+- Leverages `@st.cache_resource` for the `EmailAnalyzer` engine to prevent reloading intensive PyTorch/SpaCy models into memory on every keystroke.
+- Includes dynamic loading spinners and conditional color-coded `st.success` / `st.info` visual badges.
+
+**Core Pipeline (`src/pipeline.py`):**
+1. Classify input email text with `EmailClassifier`.
+2. If prediction is important (`1`), run NER extraction via `extract_with_display_names(...)`.
 3. Return a dictionary:
    - `importance`: `"Important"` or `"Not Important"`
-   - `entities`: extracted entity dict or `None`
+   - `entities`: Dict mapping semantic strings to lists of detected entities, or `None`.
 
 ## Setup
 
@@ -104,8 +112,8 @@ py -3.12 -m venv .venv
 
 ```powershell
 python -m pip install --upgrade pip
-pip install pandas scikit-learn joblib spacy matplotlib seaborn jupyter
-python -m spacy download en_core_web_sm
+pip install pandas scikit-learn joblib spacy matplotlib seaborn jupyter sentence-transformers
+python -m spacy download en_core_web_md
 ```
 
 ## Run Inference Test
@@ -146,13 +154,13 @@ Cause:
 Fix:
 - Run notebook cells in order (or `Run All`) before saving model artifacts.
 
-### `OSError: [E050] Can't find model 'en_core_web_sm'`
+### `OSError: [E050] Can't find model 'en_core_web_md'`
 Cause:
 - spaCy model not installed in active environment.
 
 Fix:
 ```powershell
-python -m spacy download en_core_web_sm
+python -m spacy download en_core_web_md
 ```
 
 ## Current Notes
