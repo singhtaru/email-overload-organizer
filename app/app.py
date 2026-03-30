@@ -6,7 +6,6 @@ from datetime import datetime
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import streamlit as st
-from src.pipeline import EmailAnalyzer
 from src.email_format import format_for_classifier
 
 try:
@@ -17,7 +16,14 @@ except ImportError:
 # ---------- PAGE ----------
 st.set_page_config(page_title="Email Overload Organizer", layout="wide")
 
-analyzer = EmailAnalyzer()
+
+@st.cache_resource
+def _get_analyzer():
+    """Load Torch/SBERT/spaCy only when needed so Cloud health checks do not time out."""
+    from src.pipeline import EmailAnalyzer
+
+    return EmailAnalyzer()
+
 
 # ---------- HELPERS ----------
 
@@ -237,7 +243,7 @@ if not combined.strip():
 # ---------- RESULTS ----------
 if analyze and combined.strip():
     with st.spinner("Analyzing..."):
-        result = analyzer.analyze(combined)
+        result = _get_analyzer().analyze(combined)
 
     classification = result.get("classification", "Low")
     importance = result.get("importance", "Not Important")

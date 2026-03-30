@@ -1,13 +1,17 @@
-# Core: imports under src/ (classification, ner, pipeline, test_pipeline).
-# UI: app/app.py (Streamlit) — not imported from src but needed to run the web app.
-# After install, download a spaCy English model (default: small):
+# Python deps for src/ + Streamlit app (single file at repo root — Streamlit Cloud also finds this
+# when no dependency file exists under app/).
+#
+# en_core_web_sm wheel: NER on Cloud without `spacy download`. Local alternative:
 #   python -m spacy download en_core_web_sm
 
-joblib==1.5.3
-numpy==2.4.2
-pandas==2.3.3
-scikit-learn==1.8.0
-sentence-transformers==5.3.0
-spacy==3.8.11
-dateparser==1.4.0
-streamlit==1.55.0
+joblib>=1.4.0
+numpy>=2.0.0
+pandas>=2.0.0
+scikit-learn>=1.5.0
+sentence-transformers>=5.0.0
+spacy>=3.7.0,<4.0.0
+dateparser>=1.2.0
+streamlit>=1.40.0
+
+# en_core_web_sm (3.8.x) for NER — installable via pip on Cloud without `spacy download`
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
