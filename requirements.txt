@@ -1,0 +1,13 @@
+# Core: imports under src/ (classification, ner, pipeline, test_pipeline).
+# UI: app/app.py (Streamlit) — not imported from src but needed to run the web app.
+# After install, download a spaCy English model (default: small):
+#   python -m spacy download en_core_web_sm
+
+joblib==1.5.3
+numpy==2.4.2
+pandas==2.3.3
+scikit-learn==1.8.0
+sentence-transformers==5.3.0
+spacy==3.8.11
+dateparser==1.4.0
+streamlit==1.55.0
