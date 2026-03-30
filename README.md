@@ -89,10 +89,16 @@ Saved artifacts:
 
 - `models/embedding_stacking_model.pkl`
 
-Notebook result currently recorded in `04_stacking classifier.ipynb`:
+Latest script-based evaluation (from prior `src`/`scripts` runs, no notebook recalculation):
 
-- Accuracy: `0.9891833318820809`
-- F1: `0.9856261249678581`
+- Combined dataset size: `20,424` rows (Enron sample + supplemental custom rows)
+- Held-out test split accuracy (`20%` split): `80.12%`
+- Overall full-dataset accuracy (all `20,424` rows): `89.21%`
+
+Interpretation:
+
+- Use `80.12%` as the primary generalization metric (held-out data).
+- `89.21%` is a full-dataset aggregate and includes training rows, so it is not a pure unseen-test score.
 
 ## NER Details
 
