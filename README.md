@@ -36,14 +36,12 @@ email-overload-organizer/
     04_stacking classifier.ipynb
     05_ner.ipynb
   scripts/
+    train_embedding_model.py
     evaluate_dataset_accuracy.py
-    eval_emails_16_30.py
     stress_test_enron_style_2.py
     stress_test_pdf_emails.py
-    train_embedding_model.py
-    fix_syntax.py
-    patch_notebooks.py
-    test_model.py
+    eval_emails_16_30.py        # optional extra stress subset
+    test_model.py               # optional quick sanity check
   src/
     classification.py
     ner.py
@@ -174,6 +172,12 @@ python scripts/stress_test_pdf_emails.py
 
 These compare classifier output to hand labels from benchmark PDFs.
 
+For additional ad-hoc evaluation:
+
+```powershell
+python scripts/eval_emails_16_30.py
+```
+
 ## Retrain the stacking model
 
 Requires `data/processed/emails_with_labels.csv`:
@@ -228,6 +232,7 @@ Cause: `EmailClassifier` requests local-only SBERT weights; the model must be ca
 
 - `src/email_analyzer_demo.py` currently contains a small analyzer demo snippet rather than preprocessing utilities.
 - `data/` is gitignored by current `.gitignore`.
+- `scripts/test_model.py` and `scripts/eval_emails_16_30.py` are optional sanity/eval helpers and not required for train/app flow.
 
 ## Future Improvements
 
