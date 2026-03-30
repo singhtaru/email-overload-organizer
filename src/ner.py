@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -12,19 +13,20 @@ except ImportError:
 
 
 def _build_nlp() -> Language:
-    """Prefer larger English models; fall back if not installed. Parser excluded — not needed for NER."""
-    last_err: Optional[OSError] = None
+    """Load a spaCy model with memory-safe fallbacks for constrained machines."""
+    # Start with smaller models to avoid large vector allocations on low-memory systems.
+    last_err: Optional[Exception] = None
     nlp: Optional[Language] = None
-    for name in ("en_core_web_lg", "en_core_web_md", "en_core_web_sm"):
+    for name in ("en_core_web_sm", "en_core_web_md", "en_core_web_lg"):
         try:
             nlp = spacy.load(name, exclude=["parser"])
             break
-        except OSError as e:
+        except (OSError, MemoryError, ValueError) as e:
             last_err = e
     if nlp is None:
         raise OSError(
             "No spaCy English model found. Install one of: "
-            "python -m spacy download en_core_web_lg"
+            "python -m spacy download en_core_web_sm"
         ) from last_err
 
     if "entity_ruler" not in nlp.pipe_names:
@@ -97,6 +99,7 @@ class NERExtractor:
 
     def __init__(self):
         self.nlp = _build_nlp()
+        logging.getLogger(__name__).info("NER initialized with spaCy pipeline: %s", self.nlp.meta.get("name", "unknown"))
         self.stop_entities = {
             "eligible branches",
             "eligibility criteria",

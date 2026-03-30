@@ -1,6 +1,7 @@
 from src.classification import EmailClassifier
 from src.ner import NERExtractor
 import re
+from typing import Optional
 
 
 class EmailAnalyzer:
@@ -13,7 +14,8 @@ class EmailAnalyzer:
 
     def __init__(self):
         self.classifier = EmailClassifier()
-        self.ner = NERExtractor()
+        # Lazy-load NER so the app can start even on low-memory systems.
+        self.ner: Optional[NERExtractor] = None
         self.absolute_date_pattern = re.compile(
             r"\b\d{1,2}(st|nd|rd|th)?\s+"
             r"(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*"
@@ -186,10 +188,12 @@ class EmailAnalyzer:
             priority_tier_source = "skipped_ner_not_important"
         else:
             # -------- 2) NER → High / Medium only when Important --------
+            if self.ner is None:
+                self.ner = NERExtractor()
             entities = self.ner.extract(text)
             priority, priority_tier_source = self._priority_from_ner(entities)
 
-        ner_signal_score = self.ner.strong_signal_count(entities) if entities else 0
+        ner_signal_score = self.ner.strong_signal_count(entities) if (entities and self.ner is not None) else 0
 
         # -------- SUMMARY --------
         summary = self._summarize(text)
