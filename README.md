@@ -9,6 +9,8 @@ The current implementation uses:
 - A single **`EmailAnalyzer`** pipeline in `src/pipeline.py` that maps classifier output + NER signals to priority, summaries, deadlines, and suggested actions
 - **`format_for_classifier`** in `src/email_format.py` so training and inference both use `Subject: …` / `Body: …` text
 
+> **Hardware note:** Development environment is an Intel Core Ultra 7 155H (16 cores, no NVIDIA GPU, 32 GB RAM). CUDA is not available; all training and inference runs on CPU. The notebook SBERT cell is tuned accordingly — see [Notebook Workflow](#notebook-workflow).
+
 ## Project Goals
 
 - Reduce email overload by prioritizing important emails
@@ -75,9 +77,12 @@ Important columns used in modeling:
 **Classifier (`EmailClassifier`):**
 
 - Embeddings: `SentenceTransformer('all-MiniLM-L6-v2')` (loads with `local_files_only=True` if you have the model cached)
+- Embeddings are **L2-normalised** (`normalize_embeddings=True`) so cosine similarity equals dot product — no extra normalisation step needed downstream
 - Base learners in the stack: Logistic Regression, Random Forest, Linear SVM (`LinearSVC`)
 - Meta learner: Logistic Regression (via `StackingClassifier`)
 - **Post-model logic:** probability threshold (`IMPORTANCE_PROBA_THRESHOLD`), promotional / newsletter pattern checks, negated-urgency patterns, and light **soft boosts** on top of stacking probabilities for short, request-like phrasing
+
+> **Ensemble note:** The stacking ensemble uses `StackingClassifier` (sklearn). The base learners are LR, RF, and LinearSVC.
 
 **Training script (`scripts/train_embedding_model.py`):**
 
@@ -198,9 +203,25 @@ Recommended order:
 
 1. `notebooks/01_load_and_explore.ipynb`
 2. `notebooks/02_preprocessing.ipynb`
-3. `notebooks/03_classification.ipynb`
-4. `notebooks/04_stacking classifier.ipynb`
+3. `notebooks/03_classification.ipynb` — SBERT embedding + StackingClassifier training
+4. `notebooks/04_stacking classifier.ipynb` — evaluation & confusion matrix
 5. `notebooks/05_ner.ipynb`
+
+### SBERT Embedding Cell (CPU-optimised)
+
+The embedding cell in `03_classification.ipynb` is tuned for **CPU-only machines** (no NVIDIA GPU):
+
+| Setting | Value | Reason |
+|---|---|---|
+| `torch.set_num_threads` | `os.cpu_count()` (16 on Ultra 7 155H) | Uses all P-cores + E-cores |
+| `batch_size` (CPU) | `128` | Safe with 32 GB RAM; ~2× faster than default 64 |
+| `batch_size` (CUDA) | `256` | Used automatically if a CUDA GPU is detected |
+| `normalize_embeddings` | `True` | L2-normalises output; cosine similarity = dot product |
+| Cache | `data/processed/X_train_embed_minilm.npy` | Skips re-encoding on subsequent runs |
+
+The cell prints `[INFO] No CUDA GPU found — running on CPU with N threads` at startup so you know which path is active.
+
+> **Classifier architecture separation:** The ensemble imports (`StackingClassifier`, `LogisticRegression`, `LinearSVC`, `RandomForestClassifier`) belong **only in the notebook training cells**. `src/classification.py` is inference-only — it loads the trained `.pkl` and does not import sklearn ensemble classes.
 
 ## Common Issues and Fixes
 
@@ -239,6 +260,7 @@ Cause: `EmailClassifier` requests local-only SBERT weights; the model must be ca
 - `src/email_analyzer_demo.py` currently contains a small analyzer demo snippet rather than preprocessing utilities.
 - `data/` is gitignored by current `.gitignore`.
 - `scripts/test_model.py` and `scripts/eval_emails_16_30.py` are optional sanity/eval helpers and not required for train/app flow.
+- Development hardware has **no NVIDIA GPU** (Intel Arc integrated only). `torch.cuda.is_available()` returns `False`; all training runs on CPU. CUDA paths in the code are kept for portability (e.g., Google Colab, cloud VMs).
 
 ## Future Improvements
 
@@ -247,3 +269,4 @@ Cause: `EmailClassifier` requests local-only SBERT weights; the model must be ca
 - Add unit tests for classifier, NER extractor, and end-to-end pipeline
 - Optional: `@st.cache_resource` on `EmailAnalyzer` in Streamlit to avoid reloading models on reruns
 - Support additional entities (e.g., phone, email) with custom rules
+- If a CUDA GPU becomes available: set `SBERT_BATCH_SIZE=256` and verify `torch.cuda.is_available()` returns `True` before retraining
