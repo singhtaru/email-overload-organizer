@@ -1,4 +1,5 @@
 import joblib
+import os
 import re
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
@@ -7,13 +8,25 @@ from sentence_transformers import SentenceTransformer
 IMPORTANCE_PROBA_THRESHOLD = 0.20
 
 
+def _hf_hub_offline() -> bool:
+    return os.environ.get("HF_HUB_OFFLINE", "").lower() in ("1", "true", "yes")
+
+
 class EmailClassifier:
     def __init__(self):
         base_dir = Path(__file__).resolve().parent.parent
         models_dir = base_dir / "models"
+        # Vendored snapshot (optional): models/all-MiniLM-L6-v2 with config + weights
+        local_sbert = models_dir / "all-MiniLM-L6-v2"
+        if local_sbert.is_dir():
+            sbert_id = str(local_sbert)
+            local_only = True
+        else:
+            sbert_id = "sentence-transformers/all-MiniLM-L6-v2"
+            local_only = _hf_hub_offline()
         self.sbert = SentenceTransformer(
-            "all-MiniLM-L6-v2",
-            local_files_only=True,
+            sbert_id,
+            local_files_only=local_only,
         )
         self.model = joblib.load(models_dir / "embedding_stacking_model.pkl")
 
