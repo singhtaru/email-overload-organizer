@@ -5,7 +5,9 @@ An NLP project that scores email **importance**, assigns a **priority tier** (Hi
 The current implementation uses:
 
 - A **SentenceTransformer** (`all-MiniLM-L6-v2`) + **stacking classifier** for importance prediction, combined with **rule-based filters and soft boosts** (marketing noise, negated urgency, keyword cues) in `src/classification.py`
-- **spaCy NER** (prefers `en_core_web_lg`, falls back to `md` / `sm`) for entity extraction on **important** emails only — not important mail skips NER for speed
+- **Optional vendored weights:** if `models/all-MiniLM-L6-v2/` exists, the classifier loads it with `local_files_only=True`; otherwise it uses the Hugging Face hub and respects **`HF_HUB_OFFLINE=1`** for air-gapped runs
+- **spaCy NER** — loads the first available English model in order **`en_core_web_sm` → `en_core_web_md` → `en_core_web_lg`** (smaller models first for memory safety; parser excluded; statistical NER + optional `entity_ruler` patterns). The repo’s `requirements.txt` pins **`en_core_web_sm`** via wheel for Streamlit Cloud; locally you can `python -m spacy download en_core_web_md` or `en_core_web_lg` for higher quality
+- NER runs on **important** emails only — not important mail skips NER for speed
 - A single **`EmailAnalyzer`** pipeline in `src/pipeline.py` that maps classifier output + NER signals to priority, summaries, deadlines, and suggested actions
 - **`format_for_classifier`** in `src/email_format.py` so training and inference both use `Subject: …` / `Body: …` text
 
@@ -30,6 +32,7 @@ email-overload-organizer/
     processed/
       emails_with_labels.csv
   models/
+    all-MiniLM-L6-v2/          # optional vendored SBERT snapshot (config + weights)
     embedding_stacking_model.pkl
   notebooks/
     01_load_and_explore.ipynb
@@ -52,6 +55,7 @@ email-overload-organizer/
     supplemental_training_emails.py
     email_analyzer_demo.py
     test_pipeline.py
+  requirements.txt
 ```
 
 ## Data and Features
@@ -76,7 +80,7 @@ Important columns used in modeling:
 
 **Classifier (`EmailClassifier`):**
 
-- Embeddings: `SentenceTransformer('all-MiniLM-L6-v2')` (loads with `local_files_only=True` if you have the model cached)
+- Embeddings: `SentenceTransformer('all-MiniLM-L6-v2')` — from `models/all-MiniLM-L6-v2` when present, else from the hub (with `HF_HUB_OFFLINE` respected when not using a local folder)
 - Embeddings are **L2-normalised** (`normalize_embeddings=True`) so cosine similarity equals dot product — no extra normalisation step needed downstream
 - Base learners in the stack: Logistic Regression, Random Forest, Linear SVM (`LinearSVC`)
 - Meta learner: Logistic Regression (via `StackingClassifier`)
@@ -105,11 +109,13 @@ Interpretation:
 - Use `80.12%` as the primary generalization metric (held-out data).
 - `89.21%` is a full-dataset aggregate and includes training rows, so it is not a pure unseen-test score.
 
+To **recompute metrics** for the currently saved `embedding_stacking_model.pkl` (same sampling + supplemental logic as training), run `python -m scripts.evaluate_dataset_accuracy` from the project root. That script loads SBERT with `local_files_only=True` — ensure the model name is cached or use a vendored snapshot under `models/`.
+
 ## NER Details
 
 NER component in `src/ner.py`:
 
-- Loads the best available English model: `en_core_web_lg` → `en_core_web_md` → `en_core_web_sm` (parser excluded; statistical NER + optional `entity_ruler` patterns)
+- Loads the first available English model in order: **`en_core_web_sm` → `en_core_web_md` → `en_core_web_lg`** (parser excluded; statistical NER + optional `entity_ruler` patterns)
 - Runs on **important** emails only; for not important, the pipeline returns empty entities
 - Deep cleaning: strips quoted replies, forwarded headers, and common signatures before extraction
 - Validation: filters extreme lengths, numeric-only noise, and weak single-token hits
@@ -120,6 +126,7 @@ NER component in `src/ner.py`:
 **Streamlit app (`app/app.py`):**
 
 - Subject + body inputs combined with `format_for_classifier` before analysis
+- **`@st.cache_resource`** on analyzer construction so SBERT/spaCy are not reloaded on every rerun
 - Shows importance (yes/no), **priority** (High / Medium / Low), and **confidence** (stacking probability, adjusted score, or rule path)
 - **Deadline** bar when a date can be parsed (uses `dateparser` if installed)
 - **Entity chips**, tabs for Summary / **Signals** (decision path, scores, keyword cues) / raw **Entities** JSON, and a **Suggested action** callout with an inferred action tag (Reply, Schedule, etc.)
@@ -142,13 +149,26 @@ py -3.12 -m venv .venv
 
 ### 2. Install dependencies
 
+From the project root (recommended — matches Streamlit Cloud and pins core libraries + `en_core_web_sm`):
+
 ```powershell
 python -m pip install --upgrade pip
-pip install pandas scikit-learn joblib spacy matplotlib seaborn jupyter sentence-transformers streamlit dateparser
+pip install -r requirements.txt
+```
+
+For local Jupyter notebooks (plots and kernels), add:
+
+```powershell
+pip install jupyter matplotlib seaborn
+```
+
+For a larger spaCy model (optional, if not satisfied with `sm`):
+
+```powershell
 python -m spacy download en_core_web_md
 ```
 
-For best NER quality (optional):
+or:
 
 ```powershell
 python -m spacy download en_core_web_lg
@@ -171,6 +191,16 @@ python -m src.test_pipeline
 ```
 
 This runs sample emails through the end-to-end analyzer and prints predicted importance, priority, and entities.
+
+## Dataset accuracy report (optional)
+
+From the project root:
+
+```powershell
+python -m scripts.evaluate_dataset_accuracy
+```
+
+Prints train / test / full-dataset accuracy for the saved stacking model using the same Enron-balanced + supplemental pipeline as `train_embedding_model.py`. Requires a cached or vendored `all-MiniLM-L6-v2` because the script uses `local_files_only=True`.
 
 ## Stress tests (optional)
 
@@ -245,28 +275,28 @@ Fix: Run notebook cells in order (or **Run All**) before saving model artifacts.
 
 Cause: spaCy model not installed in the active environment.
 
-Fix:
+Fix: `pip install -r requirements.txt` installs `en_core_web_sm` via the wheel in `requirements.txt`, or install another model explicitly:
 
 ```powershell
-python -m spacy download en_core_web_md
+python -m spacy download en_core_web_sm
 ```
 
 ### `OSError` from `SentenceTransformer` / offline load
 
-Cause: `EmailClassifier` requests local-only SBERT weights; the model must be cached (e.g. after a normal download) or you can adjust `local_files_only` in `classification.py` for development.
+Cause: No local folder at `models/all-MiniLM-L6-v2`, and weights are not cached, or `HF_HUB_OFFLINE` is set without a local snapshot.
+
+Fix: Run once with network access so Hugging Face caches the model, add a vendored copy under `models/all-MiniLM-L6-v2`, or unset `HF_HUB_OFFLINE` for development.
 
 ## Current Notes
 
-- `src/email_analyzer_demo.py` currently contains a small analyzer demo snippet rather than preprocessing utilities.
-- `data/` is gitignored by current `.gitignore`.
+- `src/email_analyzer_demo.py` contains a small analyzer demo snippet rather than preprocessing utilities.
+- `data/` and common tabular/JSON data extensions are gitignored — place datasets locally per the structure above.
 - `scripts/test_model.py` and `scripts/eval_emails_16_30.py` are optional sanity/eval helpers and not required for train/app flow.
 - Development hardware has **no NVIDIA GPU** (Intel Arc integrated only). `torch.cuda.is_available()` returns `False`; all training runs on CPU. CUDA paths in the code are kept for portability (e.g., Google Colab, cloud VMs).
 
 ## Future Improvements
 
-- Add `requirements.txt` or `pyproject.toml` for reproducible environment setup
 - Convert `src/` into a formal package (`src/__init__.py`, CLI entrypoint)
 - Add unit tests for classifier, NER extractor, and end-to-end pipeline
-- Optional: `@st.cache_resource` on `EmailAnalyzer` in Streamlit to avoid reloading models on reruns
 - Support additional entities (e.g., phone, email) with custom rules
 - If a CUDA GPU becomes available: set `SBERT_BATCH_SIZE=256` and verify `torch.cuda.is_available()` returns `True` before retraining
