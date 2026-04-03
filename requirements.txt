@@ -9,6 +9,8 @@ numpy>=2.0.0
 pandas>=2.0.0
 scikit-learn>=1.5.0
 sentence-transformers>=5.0.0
+# transformers imports optional vision modules; missing torchvision breaks import on Cloud
+torchvision>=0.15.0
 spacy>=3.7.0,<4.0.0
 dateparser>=1.2.0
 streamlit>=1.40.0
